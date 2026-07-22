@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sre-loop/schemas/iteration-memory.schema.json",
+  "title": "IterationMemory",
+  "type": "object",
+  "required": ["run_id", "mode", "iteration", "max_iterations", "scope", "converged"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {"type": "string"},
+    "mode": {"type": "string", "enum": ["review", "auto", "chat"]},
+    "iteration": {"type": "integer", "minimum": 0},
+    "max_iterations": {"type": "integer", "minimum": 1},
+    "scope": {
+      "type": "object",
+      "required": ["namespace", "target"],
+      "properties": {
+        "namespace": {"type": "string"},
+        "target": {"type": "string"}
+      }
+    },
+    "health_signature": {"type": "string"},
+    "converged": {"type": "boolean"},
+    "attempted_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["signature", "result", "iteration"],
+        "properties": {
+          "signature": {"type": "string"},
+          "result": {"type": "string"},
+          "iteration": {"type": "integer"}
+        }
+      }
+    },
+    "failed_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["signature", "result", "iteration"],
+        "properties": {
+          "signature": {"type": "string"},
+          "result": {"type": "string"},
+          "iteration": {"type": "integer"},
+          "lesson": {"type": "string"}
+        }
+      }
+    },
+    "lessons": {"type": "array", "items": {"type": "string"}},
+    "escalated": {"type": "boolean"},
+    "next_hint": {"type": "string"}
+  }
+}

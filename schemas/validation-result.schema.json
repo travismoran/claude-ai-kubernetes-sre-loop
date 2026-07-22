@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sre-loop/schemas/validation-result.schema.json",
+  "title": "ValidationResult",
+  "type": "object",
+  "required": ["status", "reason", "missing", "iteration"],
+  "additionalProperties": false,
+  "properties": {
+    "status": {"type": "string", "enum": ["PASS", "FAIL"]},
+    "reason": {"type": "string"},
+    "missing": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Absent telemetry artifacts to re-collect next iteration."
+    },
+    "iteration": {"type": "integer", "minimum": 0}
+  }
+}

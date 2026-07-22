@@ -1,0 +1,62 @@
+# Skill 7 — Failure-watcher CronJob (preferred trigger for failure signals).
+#
+# Periodically scans the namespace for pods in CrashLoopBackOff / ImagePullBackOff
+# and, if any are found, fires a repository_dispatch(aks-deployment-failure) to
+# launch the sre-loop in `auto` mode. Unlike a postStart hook, this retries,
+# has RBAC, and won't block workload startup.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: sre-loop-watcher, namespace: payments}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: sre-loop-watcher, namespace: payments}
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: sre-loop-watcher, namespace: payments}
+subjects: [{kind: ServiceAccount, name: sre-loop-watcher, namespace: payments}]
+roleRef: {kind: Role, name: sre-loop-watcher, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sre-loop-failure-watcher
+  namespace: payments
+spec:
+  schedule: "*/5 * * * *"          # every 5 minutes
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: sre-loop-watcher
+          restartPolicy: Never
+          containers:
+            - name: watcher
+              image: bitnami/kubectl:latest
+              env:
+                - name: GITHUB_PAT
+                  valueFrom:
+                    secretKeyRef: {name: sre-loop-dispatch, key: github_pat}
+              command: ["sh", "-c"]
+              args:
+                - >-
+                  BAD=$(kubectl -n payments get pods -o jsonpath='{range .items[*]}{.status.containerStatuses[0].state.waiting.reason}{"\n"}{end}'
+                  | grep -Ec 'CrashLoopBackOff|ImagePullBackOff|ErrImagePull' || true);
+                  if [ "$BAD" -gt 0 ]; then
+                    echo "Found $BAD unhealthy pod(s) — dispatching sre-loop";
+                    curl -sf -X POST
+                      -H "Authorization: token ${GITHUB_PAT}"
+                      -H "Accept: application/vnd.github.v3+json"
+                      https://api.github.com/repos/YOUR_ORG/YOUR_REPO/dispatches
+                      -d '{"event_type":"aks-deployment-failure","client_payload":{"mode":"auto","namespace":"payments","source":"failure-watcher"}}';
+                  else
+                    echo "No unhealthy pods.";
+                  fi

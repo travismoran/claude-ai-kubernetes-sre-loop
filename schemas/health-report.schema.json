@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sre-loop/schemas/health-report.schema.json",
+  "title": "ClusterHealthReport",
+  "type": "object",
+  "required": ["timestamp", "scope", "healthy", "summary", "findings", "signature"],
+  "additionalProperties": false,
+  "properties": {
+    "timestamp": {"type": "string", "format": "date-time"},
+    "scope": {
+      "type": "object",
+      "required": ["namespace", "target"],
+      "properties": {
+        "namespace": {"type": "string"},
+        "target": {"type": "string"}
+      }
+    },
+    "healthy": {"type": "boolean"},
+    "summary": {"type": "string"},
+    "signature": {
+      "type": "string",
+      "description": "Stable fingerprint of the problem state for no-progress detection."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "namespace", "name", "condition", "severity"],
+        "additionalProperties": true,
+        "properties": {
+          "kind": {"type": "string", "enum": ["Node", "PVC", "Deployment", "StatefulSet", "Pod", "Event"]},
+          "namespace": {"type": "string"},
+          "name": {"type": "string"},
+          "condition": {"type": "string"},
+          "severity": {"type": "string", "enum": ["info", "warning", "critical"]},
+          "evidence": {"type": "object"}
+        }
+      }
+    }
+  }
+}

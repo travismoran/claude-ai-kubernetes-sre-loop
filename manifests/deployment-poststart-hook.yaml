@@ -1,0 +1,47 @@
+# Skill 7 — Lifecycle Hook (hardened variant of the project-brief pattern).
+#
+# Fires a repository_dispatch to the sre-loop workflow when the container starts.
+# HARDENING vs. the naive pattern:
+#   - The GitHub PAT is NOT inlined; it is mounted from a Secret ($GITHUB_PAT).
+#   - postStart is fire-and-forget (no retry, can block startup) — keep it a
+#     single fast curl. For anything richer, use the failure-dispatch CronJob.
+#
+# Prereqs:
+#   kubectl -n <ns> create secret generic sre-loop-dispatch \
+#     --from-literal=github_pat=<FINE_GRAINED_PAT_with_contents:write+dispatch>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  namespace: payments
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: my-app}
+  template:
+    metadata:
+      labels: {app: my-app}
+    spec:
+      containers:
+        - name: app-container
+          image: myregistry.azurecr.io/app:latest
+          env:
+            - name: GITHUB_PAT
+              valueFrom:
+                secretKeyRef:
+                  name: sre-loop-dispatch
+                  key: github_pat
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - "sh"
+                  - "-c"
+                  - >-
+                    curl -sf -X POST
+                    -H "Authorization: token ${GITHUB_PAT}"
+                    -H "Accept: application/vnd.github.v3+json"
+                    https://api.github.com/repos/YOUR_ORG/YOUR_REPO/dispatches
+                    -d '{"event_type":"aks-deployment-success","client_payload":{"mode":"review","namespace":"payments","deployment":"my-app","source":"postStart-hook"}}'
+                    || true
