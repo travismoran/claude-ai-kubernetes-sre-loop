@@ -1,3 +1,25 @@
+# Local environment - NEVER commit real IDs, cluster names, PATs, or webhooks
+.env
+*.env
+!*.env.example
+
+# Credentials / kubeconfigs - must never be committed (public repo)
+*.pem
+*.pfx
+*.key
+kubeconfig
+kube_config
+kube_admin_config
+*.kubeconfig
+~/.kube/
+
+# Runtime scratch
 /tmp/
 *.tmp
-kubeconfig
+/tmp/sre-diagnostics/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

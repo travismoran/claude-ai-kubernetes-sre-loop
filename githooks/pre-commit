@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Secret scan on staged changes. Enable once per clone with:
+#   git config core.hooksPath githooks
+#
+# Three layers, all always run:
+#   1. forbidden file types  2. keyword patterns  3. gitleaks (if installed)
+# Layer 2 exists because entropy-based scanners miss low-entropy keyword
+# assignments (verified: gitleaks passes 'token = "ghp_fakelowentropy...").
+set -uo pipefail
+
+fail=0
+
+# --- 1. File types that must never be committed, regardless of content ----
+while IFS= read -r f; do
+  case "$f" in
+    *.example | *.example.* ) continue ;;
+    .env | *.pem | *.pfx | *.key | *kubeconfig* | *kube_config* | *kube_admin_config*)
+      echo "BLOCKED: '$f' is a forbidden file type for this public repo." >&2
+      fail=1
+      ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACMR)
+
+# --- 2. Keyword scan of added lines in the staged diff ---------------------
+# The enforcement files themselves contain these patterns, so exclude them.
+PATTERNS='(client_secret|client[-_]?password|passwd)[[:space:]]*[:=]|private[_-]?key[[:space:]]*[:=]|BEGIN [A-Z ]*PRIVATE KEY|AccountKey=|SharedAccessSignature=|&sig=[A-Za-z0-9%+/=]{16,}|Bearer [A-Za-z0-9._~+/-]{25,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|hooks\.slack\.com/services/T[A-Za-z0-9/]{20,}'
+hits=$(git diff --cached -U0 --diff-filter=ACMR \
+  -- . ':(exclude)githooks' ':(exclude).claude/rules/no-secrets.md' ':(exclude).claude/skills' ':(exclude).gitleaks.toml' ':(exclude)docs/github-secrets-setup.md' |
+  grep -E '^\+' | grep -icE "$PATTERNS" || true)
+if [ "${hits:-0}" -gt 0 ]; then
+  echo "BLOCKED: staged changes match secret keyword patterns:" >&2
+  git diff --cached -U0 --diff-filter=ACMR \
+    -- . ':(exclude)githooks' ':(exclude).claude/rules/no-secrets.md' ':(exclude).claude/skills' ':(exclude).gitleaks.toml' ':(exclude)docs/github-secrets-setup.md' |
+    grep -E '^\+' | grep -inE "$PATTERNS" | head -10 >&2
+  fail=1
+fi
+
+# --- 3. gitleaks over the staged diff --------------------------------------
+if command -v gitleaks >/dev/null 2>&1; then
+  if ! gitleaks git --pre-commit --staged --redact --no-banner -c .gitleaks.toml; then
+    echo "BLOCKED: gitleaks found potential secrets in staged changes." >&2
+    fail=1
+  fi
+else
+  echo "WARNING: gitleaks not installed - keyword scan only." >&2
+  echo "Install: https://github.com/gitleaks/gitleaks/releases" >&2
+fi
+
+[ "$fail" -eq 1 ] && { echo "Commit rejected by githooks/pre-commit." >&2; exit 1; }
+exit 0

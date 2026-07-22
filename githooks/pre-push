@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Final gate before anything reaches the public remote: scan the working
+# tree AND the full commit history for secrets.
+# Enable once per clone with: git config core.hooksPath githooks
+set -uo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "WARNING: gitleaks not installed; pushing without full secret scan." >&2
+  echo "Install: https://github.com/gitleaks/gitleaks/releases" >&2
+  exit 0
+fi
+
+echo "gitleaks: scanning working tree..."
+gitleaks dir . --redact --no-banner -c .gitleaks.toml || {
+  echo "PUSH REJECTED: secrets detected in the working tree." >&2
+  exit 1
+}
+
+echo "gitleaks: scanning full git history..."
+gitleaks git --redact --no-banner -c .gitleaks.toml || {
+  echo "PUSH REJECTED: secrets detected in git history." >&2
+  echo "A secret in ANY commit is exposed once pushed - rewrite history" >&2
+  echo "(git rebase -i / filter-repo) and rotate the credential first." >&2
+  exit 1
+}
+
+exit 0

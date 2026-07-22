@@ -65,7 +65,8 @@ whole loop when a deployment starts or fails.
 k8s-sre-loop-engine/
 ├── README.md                     ← you are here
 ├── .github/workflows/
-│   └── sre-loop.yml              ← GitHub Actions entrypoint (the loop driver)
+│   ├── sre-loop.yml              ← GitHub Actions entrypoint (the loop driver)
+│   └── ci.yml                    ← credential-free security scan + lint + validation
 ├── skills/                       ← modular skill definitions (prompts + contracts)
 │   ├── 1-loop-orchestrator.md
 │   ├── 2-deps-tooling-verification.md
@@ -89,10 +90,35 @@ k8s-sre-loop-engine/
 │   └── failure-dispatch-cronjob.yaml
 ├── memory/                       ← per-run iteration memory (JSON), git-tracked
 │   └── .gitkeep
-└── docs/
-    ├── ARCHITECTURE.md
-    └── SAFETY.md                 ← what "non-destructive" means; guardrails
+├── docs/
+│   ├── ARCHITECTURE.md
+│   ├── SAFETY.md                 ← what "non-destructive" means; guardrails
+│   └── github-secrets-setup.md   ← gh secret/variable set commands (OIDC-first)
+├── githooks/                     ← pre-commit / pre-push secret-scan gates
+├── scripts/setup-dev.sh          ← one-time: pinned gitleaks + activate hooks
+├── .gitleaks.toml                ← secret-scan config (allowlists doc placeholders)
+├── .pre-commit-config.yaml       ← same checks for pre-commit-framework users
+├── .claude/                      ← project guidelines, no-secrets rule, secret-scan skill
+└── .ai/                          ← working context: ACTIVE_SESSION, plans, ADRs, backlog
 ```
+
+---
+
+## Security & Contributing
+
+This is a **public** repo — no real credentials, PATs, webhook URLs, or Azure
+identifiers may ever be committed (`.claude/rules/no-secrets.md`). Enforcement is
+layered: pinned gitleaks + git hooks locally, and a credential-free `ci` workflow
+(gitleaks + shellcheck + actionlint + yamllint + schema/manifest validation) that
+runs on every push to `main` and every PR.
+
+```bash
+./scripts/setup-dev.sh      # one-time per clone: installs gitleaks, activates hooks
+bash githooks/pre-push      # manual full-history secret sweep
+```
+
+Runtime credentials live only in GitHub Actions secrets/variables — see
+`docs/github-secrets-setup.md`.
 
 ---
 

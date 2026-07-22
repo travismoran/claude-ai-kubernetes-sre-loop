@@ -1,0 +1,83 @@
+# Static security + quality checks that need no cloud credentials at all.
+# Everything here runs on any fork out of the box, on every push to main and
+# on every pull request. This is the last line of defense for secret scanning.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # full history so gitleaks scans every commit
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  lint-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Shell scripts + git hooks ---
+      - name: shellcheck
+        uses: ludeeus/action-shellcheck@master
+        env:
+          SHELLCHECK_OPTS: --severity=warning
+        with:
+          additional_files: 'pre-commit pre-push'
+          scandir: './scripts'
+
+      - name: shellcheck (githooks)
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: './githooks'
+
+      # --- GitHub Actions workflows ---
+      - name: actionlint
+        uses: raven-actions/actionlint@v2
+        with:
+          files: ".github/workflows/*.yml"
+
+      # --- YAML (workflows + manifests) ---
+      - name: yamllint
+        run: |
+          pipx install yamllint
+          yamllint -d '{extends: relaxed, rules: {line-length: disable}}' \
+            .github/workflows manifests .pre-commit-config.yaml
+
+      # --- JSON Schemas parse + are valid Draft 2020-12 ---
+      - name: Validate JSON schemas
+        run: |
+          python3 - <<'PY'
+          import json, glob, sys
+          from urllib.request import urlopen  # noqa: F401 (kept for parity; offline check below)
+          ok = True
+          for f in glob.glob("schemas/*.json"):
+              try:
+                  doc = json.load(open(f))
+                  assert "$schema" in doc, f"{f}: missing $schema"
+                  assert doc.get("type") == "object", f"{f}: root type must be object"
+                  print(f"OK  {f}")
+              except Exception as e:
+                  ok = False
+                  print(f"ERR {f}: {e}")
+          sys.exit(0 if ok else 1)
+          PY
+
+      # --- Kubernetes manifests are structurally valid (schema-only, no cluster) ---
+      - name: kubeconform (manifests)
+        run: |
+          curl -sSfL -o /tmp/kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
+          /tmp/kubeconform -strict -ignore-missing-schemas -summary manifests/

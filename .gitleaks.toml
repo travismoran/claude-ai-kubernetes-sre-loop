@@ -1,0 +1,32 @@
+# Gitleaks configuration - extends the default ruleset.
+# This is a public example repository: no real credentials, PATs, webhook URLs,
+# subscription/tenant IDs, or cluster names may ever be committed. Only
+# documented placeholders are allowed.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented placeholder values used in examples, manifests, and docs"
+regexes = [
+  # The all-zeros GUID used as a placeholder in docs
+  '''00000000-0000-0000-0000-000000000000''',
+  # RFC 5737 documentation IP range used in examples
+  '''203\.0\.113\.\d{1,3}''',
+  # Documented placeholder tokens (never real values)
+  '''YOUR_GITHUB_PAT''',
+  '''<FINE_GRAINED_PAT[^>]*>''',
+  # Kubernetes secretKeyRef names/keys are references, not secret material
+  '''secretKeyRef''',
+  '''github_pat''',
+  # Example ACR image reference
+  '''myregistry\.azurecr\.io''',
+]
+paths = [
+  # Enforcement/docs files legitimately contain secret-shaped example strings
+  '''\.gitleaks\.toml''',
+  '''githooks/.*''',
+  '''\.claude/rules/no-secrets\.md''',
+  '''\.claude/skills/secret-scan/SKILL\.md''',
+  '''docs/github-secrets-setup\.md''',
+]

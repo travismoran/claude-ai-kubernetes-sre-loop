@@ -61,6 +61,9 @@ jobs:
       NAMESPACE: ${{ github.event.inputs.namespace || github.event.client_payload.namespace || '' }}
       TARGET: ${{ github.event.inputs.target || github.event.client_payload.deployment || '' }}
       MAX_ITERATIONS: ${{ github.event.inputs.max_iterations || '3' }}
+      # Identifier (non-secret) - exposed for the pre-flight context guard.
+      AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+      # Credential - the only secret the loop itself consumes at runtime.
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     steps:
       - name: Checkout
@@ -75,7 +78,19 @@ jobs:
           chmod +x kubectl && sudo mv kubectl /usr/local/bin/
           curl -sfL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
+      # Preferred: OIDC federated login (no stored Azure secret). Active when the
+      # AZURE_CLIENT_ID repository *variable* is set. See docs/github-secrets-setup.md.
       - name: Azure login (OIDC)
+        if: vars.AZURE_CLIENT_ID != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Fallback: service-principal JSON in a secret, for setups without OIDC.
+      - name: Azure login (service principal)
+        if: vars.AZURE_CLIENT_ID == ''
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -83,8 +98,8 @@ jobs:
       - name: Get AKS credentials
         run: |
           az aks get-credentials \
-            --resource-group "${{ secrets.AKS_RESOURCE_GROUP }}" \
-            --name "${{ secrets.AKS_CLUSTER_NAME }}" \
+            --resource-group "${{ vars.AKS_RESOURCE_GROUP }}" \
+            --name "${{ vars.AKS_CLUSTER_NAME }}" \
             --overwrite-existing
 
       - name: Pre-flight verification (Skill #2)
